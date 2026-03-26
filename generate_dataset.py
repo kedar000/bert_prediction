@@ -250,3 +250,27 @@ test_df.to_csv("dataset_csv/test.csv", index=False)
 
 print("✅ DATASET FIXED & READY")
 print(train_df["question_type"].value_counts())
+
+# =========================================================
+# 9. CREATE RANDOM 400 SAMPLE CSV (100 PER CLASS)
+# =========================================================
+
+samples = []
+
+for label_name, label_id in label_map.items():
+    df_class = balanced_df[balanced_df["label"] == label_id]
+    
+    # Randomly pick 100 samples
+    df_sample = df_class.sample(n=100, random_state=42)
+    samples.append(df_sample)
+
+sample_400_df = pd.concat(samples).sample(frac=1).reset_index(drop=True)
+
+# Keep only required columns
+sample_400_df = sample_400_df[["question", "label"]]
+sample_400_df.columns = ["Question", "label"]
+
+# Save CSV
+sample_400_df.to_csv("dataset_csv/sample_400.csv", index=False)
+
+print("✅ sample_400.csv created with 400 balanced random questions")
