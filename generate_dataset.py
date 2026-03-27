@@ -2,15 +2,40 @@ from datasets import load_dataset
 import pandas as pd
 import re
 import random
-import string
 import os
 from sklearn.model_selection import train_test_split
 
 os.makedirs("dataset_csv", exist_ok=True)
 
-# -------------------------------
-# Clean function
-# -------------------------------
+# =========================================================
+# SUB QUESTION PREFIXES
+# =========================================================
+sub_prefixes = [
+    "Answer multiple independent questions:",
+    "Solve the following:",
+    "Answer all parts:",
+    "Respond to each question:",
+    "Answer the questions below:",
+    "Provide answers for each of the following:",
+    "Attempt all the questions:",
+    "Answer the following set of questions:",
+    "These are separate questions, answer each:",
+    "Answer each question independently:",
+    "Please answer the following:",
+    "Questions:",
+    "Solve:",
+    "Can you answer these?",
+    "Work through the following:",
+    "Answer all questions individually:",
+    "Respond separately to each question:",
+    "Answer all:",
+    "Do the following:",
+    "", "", ""  # no-prefix cases
+]
+
+# =========================================================
+# CLEAN FUNCTION
+# =========================================================
 def clean_text(text):
     if text is None:
         return None
@@ -18,9 +43,9 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-# -------------------------------
-# Label variation
-# -------------------------------
+# =========================================================
+# LABEL VARIATION
+# =========================================================
 def format_option(label, text):
     styles = [
         f"{label}) {text}",
@@ -30,7 +55,23 @@ def format_option(label, text):
     return random.choice(styles)
 
 def generate_labels(n):
-    return [chr(97+i) for i in range(n)]  # a,b,c...
+    return [chr(97+i) for i in range(n)]
+
+# =========================================================
+# FORMAT STYLES FOR SUB QUESTIONS
+# =========================================================
+def get_format_style():
+    return random.choice([
+        lambda l, q: f"{l}) {q}",
+        lambda l, q: f"({l}) {q}",
+        lambda l, q: f"{l}. {q}",
+        lambda l, q: f"{l.upper()}) {q}",
+        lambda l, q: f"{l.upper()}. {q}",
+        lambda l, q: f"Sub-question {l}: {q}"
+    ])
+
+def get_prefix():
+    return "" if random.random() < 0.3 else random.choice(sub_prefixes)
 
 # =========================================================
 # 1. PASSAGE
@@ -54,7 +95,9 @@ for article, group in df_race.groupby("article"):
 
 df_passage = pd.DataFrame(grouped)
 
-# Convert some passage → MCQ (negative examples)
+# =========================================================
+# PASSAGE → MCQ (negative)
+# =========================================================
 def extract_mcq_from_passage(text):
     matches = re.findall(
         r"Question \d+:\s*(.*?)\nOptions:\n(.*?)(?=\nQuestion|\Z)",
@@ -116,7 +159,7 @@ df_mcq_final = pd.DataFrame({
 })
 
 # =========================================================
-# 3. MAIN QUESTIONS
+# 3. MAIN QUESTION
 # =========================================================
 quora = load_dataset("toughdata/quora-question-answer-dataset")
 df_main = quora["train"].to_pandas()
@@ -132,7 +175,7 @@ df_main_final = pd.DataFrame({
 })
 
 # =========================================================
-# 4. SUB QUESTIONS
+# 4. SUB QUESTIONS (REAL)
 # =========================================================
 multi = load_dataset("mtc/multirc_train_all_answers")
 df_sub = multi["train"].to_pandas()
@@ -147,10 +190,13 @@ for doc, group in df_sub.groupby("document"):
         continue
 
     labels = generate_labels(len(qs))
-    text = "Answer the following questions:\n\n"
+    prefix = get_prefix()
+    format_style = get_format_style()
+
+    text = f"{prefix}\n\n" if prefix else ""
     text += "\n".join([
-        f"{random.choice([f'{l})', f'({l})', f'{l}.'])} {qs[i]}"
-        for i, l in enumerate(labels)
+        format_style(labels[i], qs[i])
+        for i in range(len(labels))
     ])
 
     grouped_sub.append({
@@ -178,9 +224,12 @@ def create_sub_groups(df):
             break
 
         labels = generate_labels(len(chunk))
-        text = "Answer the following questions:\n\n"
+        prefix = get_prefix()
+        format_style = get_format_style()
+
+        text = f"{prefix}\n\n" if prefix else ""
         text += "\n".join([
-            f"{labels[j]}) {chunk[j]}"
+            format_style(labels[j], chunk[j])
             for j in range(len(chunk))
         ])
 
@@ -196,7 +245,7 @@ def create_sub_groups(df):
 df_sub_aug = create_sub_groups(df_main_sample)
 
 # =========================================================
-# 6. MERGE + CLEAN
+# 6. MERGE
 # =========================================================
 combined_df = pd.concat([
     df_passage,
@@ -207,14 +256,11 @@ combined_df = pd.concat([
     df_sub_aug
 ], ignore_index=True)
 
-# Remove duplicates
 combined_df = combined_df.drop_duplicates(subset=["question"])
-
-# Shuffle
 combined_df = combined_df.sample(frac=1).reset_index(drop=True)
 
 # =========================================================
-# 7. BALANCE (WITHOUT OVERDUPLICATION)
+# 7. BALANCE
 # =========================================================
 target_size = 8000
 balanced = []
@@ -248,29 +294,18 @@ train_df, test_df = train_test_split(
 train_df.to_csv("dataset_csv/train.csv", index=False)
 test_df.to_csv("dataset_csv/test.csv", index=False)
 
-print("✅ DATASET FIXED & READY")
-print(train_df["question_type"].value_counts())
-
 # =========================================================
-# 9. CREATE RANDOM 400 SAMPLE CSV (100 PER CLASS)
+# 9. SAMPLE 400 CSV
 # =========================================================
-
 samples = []
-
-for label_name, label_id in label_map.items():
+for label_id in label_map.values():
     df_class = balanced_df[balanced_df["label"] == label_id]
-    
-    # Randomly pick 100 samples
-    df_sample = df_class.sample(n=100, random_state=42)
-    samples.append(df_sample)
+    samples.append(df_class.sample(n=100, random_state=42))
 
 sample_400_df = pd.concat(samples).sample(frac=1).reset_index(drop=True)
-
-# Keep only required columns
 sample_400_df = sample_400_df[["question", "label"]]
 sample_400_df.columns = ["Question", "label"]
 
-# Save CSV
-sample_400_df.to_csv("dataset_csv/sample_400.csv", index=False)
+sample_400_df.to_csv("dataset_csv/sample_400_updated.csv", index=False)
 
-print("✅ sample_400.csv created with 400 balanced random questions")
+print("✅ DATASET READY WITH IMPROVED SUBQUESTION DIVERSITY")
