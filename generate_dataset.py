@@ -263,10 +263,10 @@ sample_400[["question", "label"]].to_csv("dataset_csv/sample_400_final.csv", ind
 # =========================================================
 for name, label_id in label_map.items():
     df_class = combined_df[combined_df["label"] == label_id]
-    df_200 = df_class.sample(n=200, random_state=42)
+    df_200 = df_class.sample(n=600, random_state=42)
 
     df_200[["question", "label"]].to_csv(
-        f"dataset_csv/{name}_200.csv",
+        f"dataset_csv/{name}_600.csv",
         index=False
     )
 
