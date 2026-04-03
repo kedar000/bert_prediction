@@ -33,6 +33,17 @@ sub_prefixes = [
     ""
 ]
 
+passage_prefixes = [
+    "Read the following passage and answer the questions:",
+    "Study the passage below and respond:",
+    "Carefully read the passage and answer:",
+    "Read and answer the following:",
+    "Go through the passage and answer the questions:",
+    "Analyze the passage below:",
+    "Answer based on the passage:",
+    ""
+]
+
 # =========================================================
 # CLEAN
 # =========================================================
@@ -54,7 +65,8 @@ def has_prefix(text):
 
     patterns = [
         "answer", "solve", "respond", "questions",
-        "attempt", "please", "do the following"
+        "attempt", "please", "do the following",
+        "read", "study", "analyze"
     ]
 
     return any(text.startswith(p) for p in patterns)
@@ -74,8 +86,8 @@ def get_format_style():
         lambda l, q: f"{l.upper()}. {q}"
     ])
 
-def get_prefix():
-    return "" if random.random() < 0.3 else random.choice(sub_prefixes)
+def get_prefix(prefix_list):
+    return "" if random.random() < 0.3 else random.choice(prefix_list)
 
 # =========================================================
 # PASSAGE
@@ -85,8 +97,14 @@ df_race = race["train"].to_pandas()
 
 grouped = []
 for article, group in df_race.groupby("article"):
-    text = "Read the following passage and answer the questions:\n\n"
-    text += clean_text(article) + "\n\n"
+    article_clean = clean_text(article)
+
+    prefix = get_prefix(passage_prefixes)
+
+    if prefix and not has_prefix(article_clean):
+        text = prefix + "\n\n" + article_clean + "\n\n"
+    else:
+        text = article_clean + "\n\n"
 
     for i, row in enumerate(group.itertuples(), 1):
         opts = "\n".join([
@@ -143,7 +161,7 @@ df_main_final = pd.DataFrame({
 })
 
 # =========================================================
-# SUB QUESTIONS (FIXED)
+# SUB QUESTIONS
 # =========================================================
 def build_subquestion_group(questions):
     questions = [clean_text(q) for q in questions if q]
@@ -153,14 +171,13 @@ def build_subquestion_group(questions):
     labels = generate_labels(len(questions))
     format_style = get_format_style()
 
-    # 🔥 PREFIX ADDED ONLY ONCE
-    prefix = get_prefix()
+    prefix = get_prefix(sub_prefixes)
+
     if prefix and not has_prefix(questions[0]):
-        text = prefix.strip() + "\n\n"
+        text = prefix + "\n\n"
     else:
         text = ""
 
-    # 🔥 ALL QUESTIONS ADDED TO SAME BLOCK
     text += "\n".join([
         format_style(labels[i], questions[i])
         for i in range(len(questions))
@@ -168,7 +185,7 @@ def build_subquestion_group(questions):
 
     return text.strip()
 
-# REAL SUB QUESTIONS
+# REAL
 multi = load_dataset("mtc/multirc_train_all_answers")
 df_sub = multi["train"].to_pandas()
 
@@ -185,7 +202,7 @@ for doc, group in df_sub.groupby("document"):
 
 df_sub_final = pd.DataFrame(grouped_sub)
 
-# AUGMENTED SUB QUESTIONS
+# AUGMENTED
 df_main_sample = df_main_final.sample(frac=0.3)
 
 augmented = []
@@ -208,7 +225,7 @@ while i < len(data):
 df_sub_aug = pd.DataFrame(augmented)
 
 # =========================================================
-# MERGE
+# MERGE + CLEAN
 # =========================================================
 combined_df = pd.concat([
     df_passage,
@@ -219,6 +236,11 @@ combined_df = pd.concat([
 ], ignore_index=True)
 
 combined_df = combined_df.drop_duplicates(subset=["question"])
+combined_df = combined_df.dropna(subset=["question"])
+
+combined_df["question"] = combined_df["question"].apply(clean_text)
+combined_df = combined_df[combined_df["question"].str.len() > 20]
+
 combined_df = combined_df.sample(frac=1).reset_index(drop=True)
 
 # =========================================================
@@ -243,31 +265,24 @@ train_df, test_df = train_test_split(
     random_state=42
 )
 
-train_df.to_csv("dataset_csv/train.csv", index=False)
-test_df.to_csv("dataset_csv/test.csv", index=False)
+train_df[["question", "label"]].to_csv("dataset_csv/train.csv", index=False)
+test_df[["question", "label"]].to_csv("dataset_csv/test.csv", index=False)
 
 # =========================================================
-# 400 SAMPLE (100 EACH)
+# SAMPLE 800 (200 EACH)
 # =========================================================
-samples_100 = []
+samples = []
 
 for label_id in label_map.values():
     df_class = combined_df[combined_df["label"] == label_id]
-    samples_100.append(df_class.sample(n=100, random_state=42))
+    n = min(len(df_class), 200)
+    samples.append(df_class.sample(n=n, random_state=42))
 
-sample_400 = pd.concat(samples_100).sample(frac=1)
-sample_400[["question", "label"]].to_csv("dataset_csv/sample_400_final.csv", index=False)
+sample_800 = pd.concat(samples).sample(frac=1).reset_index(drop=True)
 
-# =========================================================
-# 200 EACH TYPE
-# =========================================================
-for name, label_id in label_map.items():
-    df_class = combined_df[combined_df["label"] == label_id]
-    df_200 = df_class.sample(n=600, random_state=42)
+sample_800[["question", "label"]].to_csv(
+    "dataset_csv/sample_800_final.csv",
+    index=False
+)
 
-    df_200[["question", "label"]].to_csv(
-        f"dataset_csv/{name}_600.csv",
-        index=False
-    )
-
-print("✅ FIXED: Subquestion grouping + datasets generated")
+print("✅ FINAL CLEAN DATASET GENERATED")
