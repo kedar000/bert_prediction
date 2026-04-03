@@ -133,7 +133,7 @@ def extract_mcq(text):
         ])
 
         return clean_text(
-            f"Choose the correct option:\n\nQuestion: {q.group(1)}\n\nOptions:\n{opts}"
+            f"Question: {q.group(1)}\n\nOptions:\n{opts}"
         )
     except:
         return None
