@@ -1,0 +1,14 @@
+{
+  "question": "Answer the following:\n\na) What is AI?\nb) What is ML?\nc) What is DL?"
+}
+
+{
+  "question": "Read the passage below...\n\nThis is a long article...\n\nQuestion 1: What is AI?\nOptions:\nA) ...\nB) ..."
+}
+
+{
+  "question": "Choose the correct option:\n\nQuestion: What is AI?\n\nOptions:\nA) ...\nB) ..."
+}
+{
+  "question": "What is Artificial Intelligence?"
+}
